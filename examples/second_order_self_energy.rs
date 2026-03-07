@@ -7,6 +7,7 @@ use feynman_engine::diagrams::generate::{generate_diagrams, Observable};
 use feynman_engine::diagrams::classify::classify_diagrams;
 use feynman_engine::diagrams::rules::apply_feynman_rules;
 use feynman_engine::visualization::dot::to_dot_all;
+use feynman_engine::visualization::json::to_json_all;
 
 fn main() {
     // 1. Create a 4x4 lattice with attractive Hubbard model (t=1, U=-2)
@@ -57,4 +58,9 @@ fn main() {
     let dot = to_dot_all(&all_classified);
     println!("=== DOT Visualization ===");
     println!("{}", dot);
+
+    // 6. Output JSON for D3.js visualization
+    let json = to_json_all(&all_classified);
+    println!("=== JSON Data ===");
+    println!("{}", json);
 }
