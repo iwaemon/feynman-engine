@@ -1,13 +1,13 @@
 use crate::algebra::operators::Spin;
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, serde::Serialize)]
 pub struct Vertex {
     pub id: usize,
     pub site: String,
     pub time: String,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, serde::Serialize)]
 pub struct Propagator {
     pub from: usize,
     pub to: usize,
@@ -15,7 +15,7 @@ pub struct Propagator {
     pub external: bool,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, serde::Serialize)]
 pub struct FeynmanDiagram {
     pub order: usize,
     pub vertices: Vec<Vertex>,
