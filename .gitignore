@@ -7,3 +7,5 @@
 /diagram*.html
 /diagrams.dot
 /*.jpeg
+/target/book
+/target/book-ja

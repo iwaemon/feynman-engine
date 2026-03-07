@@ -1,0 +1,10 @@
+[book]
+title = "Feynman - Perturbation Theory Engine"
+authors = ["shumpei"]
+language = "en"
+
+[build]
+build-dir = "../target/book"
+
+[output.html]
+mathjax-support = true
