@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Feynman Diagrams - Wavy Interaction Visualization</title>
+<title>Feynman Diagrams - Textbook Style</title>
 <style>
   * { margin: 0; padding: 0; box-sizing: border-box; }
   body {
@@ -45,7 +45,7 @@
 </style>
 </head>
 <body>
-<h1>Feynman Diagrams (Wavy Interaction)</h1>
+<h1>Feynman Diagrams (Textbook Style)</h1>
 <div id="container"></div>
 
 <script type="module">
@@ -55,405 +55,641 @@ const data = __DIAGRAM_JSON__;
 
 const SPIN_UP_COLOR = "#2266cc";
 const SPIN_DOWN_COLOR = "#cc2222";
+const INTERACTION_COLOR = "#333";
 const VERTEX_RADIUS = 5;
 const DIAGRAM_W = 660;
-const DIAGRAM_H = 200;
-const MARGIN = { left: 60, right: 60, top: 50, bottom: 50 };
+const DIAGRAM_H = 260;
+const MARGIN = { left: 70, right: 70, top: 30, bottom: 40 };
 
 function spinColor(spin) {
   return spin === "Up" ? SPIN_UP_COLOR : SPIN_DOWN_COLOR;
 }
-function spinArrow(spin) {
+
+function spinLabel(spin) {
   return spin === "Up" ? "\u2191" : "\u2193";
 }
 
-function buildLayout(diag) {
+/* ------------------------------------------------------------------ */
+/*  Analyze diagram topology                                          */
+/* ------------------------------------------------------------------ */
+
+function analyzeDiagram(diag) {
   const vertices = diag.vertices;
   const props = diag.propagators;
   const vIds = vertices.map(v => v.id).sort((a, b) => a - b);
   const maxVId = Math.max(...vIds);
   const extInId = 0;
   const extOutId = maxVId + 1;
-
-  // Positions
-  const positions = {};
-  const usableW = DIAGRAM_W - MARGIN.left - MARGIN.right;
-  const cy = DIAGRAM_H / 2;
-
-  positions[extInId] = { x: MARGIN.left - 30, y: cy };
-  positions[extOutId] = { x: DIAGRAM_W - MARGIN.right + 30, y: cy };
-
-  if (vIds.length === 1) {
-    positions[vIds[0]] = { x: DIAGRAM_W / 2, y: cy };
-  } else {
-    vIds.forEach((id, i) => {
-      const x = MARGIN.left + (usableW * (i + 1)) / (vIds.length + 1);
-      positions[id] = { x, y: cy };
-    });
-  }
-
-  return { positions, vIds, extInId, extOutId, props, vertices };
-}
-
-function classifyProps(props, extInId, extOutId, vIds) {
-  const selfLoops = [];       // from === to (same vertex)
-  const extLines = [];        // external propagators connecting to vertices
-  const internalEdges = [];   // between two different vertices, not external
-  const disconnectedExt = []; // external line not touching any real vertex
-
   const vIdSet = new Set(vIds);
 
-  props.forEach((p, i) => {
+  // Classify propagators
+  const selfLoops = [];
+  const extProps = [];
+  const internalEdges = [];
+  const disconnectedExt = [];
+
+  props.forEach(p => {
     const f = p.from, t = p.to;
     if (f === t && vIdSet.has(f)) {
-      selfLoops.push({ ...p, idx: i });
+      selfLoops.push(p);
     } else if (p.external) {
-      // Check if it touches a real vertex
-      const touchesVertex = vIdSet.has(f) || vIdSet.has(t);
-      if (touchesVertex) {
-        extLines.push({ ...p, idx: i });
+      if (vIdSet.has(f) || vIdSet.has(t)) {
+        extProps.push(p);
       } else {
-        disconnectedExt.push({ ...p, idx: i });
+        disconnectedExt.push(p);
       }
     } else {
-      internalEdges.push({ ...p, idx: i });
+      internalEdges.push(p);
     }
   });
 
-  return { selfLoops, extLines, internalEdges, disconnectedExt };
+  // Find main propagator chain: path from extIn to extOut via external props
+  // and internal props that sit on the main line
+  const mainChain = findMainChain(extInId, extOutId, extProps, internalEdges, vIds, vIdSet);
+
+  // Internal edges NOT on the main chain are "above" structures
+  const mainChainEdgeSet = new Set();
+  mainChain.forEach(seg => {
+    mainChainEdgeSet.add(`${seg.from}-${seg.to}-${seg.spin}`);
+  });
+
+  const aboveEdges = internalEdges.filter(p => {
+    const key = `${p.from}-${p.to}-${p.spin}`;
+    if (mainChainEdgeSet.has(key)) {
+      mainChainEdgeSet.delete(key); // consume it so duplicates stay
+      return false;
+    }
+    return true;
+  });
+
+  // Vertices on the main chain
+  const mainVertices = new Set();
+  mainChain.forEach(seg => {
+    if (vIdSet.has(seg.from)) mainVertices.add(seg.from);
+    if (vIdSet.has(seg.to)) mainVertices.add(seg.to);
+  });
+
+  // Disconnected vertices (not on main chain)
+  const disconnectedVertices = vIds.filter(v => !mainVertices.has(v));
+
+  return {
+    vIds, extInId, extOutId, vIdSet,
+    selfLoops, extProps, internalEdges, disconnectedExt,
+    mainChain, aboveEdges, mainVertices: [...mainVertices].sort((a,b) => a-b),
+    disconnectedVertices
+  };
 }
 
-function drawWavyLine(g, cx, cy, length, amplitude, periods) {
-  const points = [];
-  const steps = periods * 20;
-  for (let i = 0; i <= steps; i++) {
-    const t = i / steps;
-    const x = cx + amplitude * Math.sin(2 * Math.PI * periods * t);
-    const y = cy + VERTEX_RADIUS + t * length;
-    points.push([x, y]);
+function findMainChain(extInId, extOutId, extProps, internalEdges, vIds, vIdSet) {
+  // Build adjacency from external props + internal edges
+  // We want to trace ext_in -> ... -> ext_out using external propagators
+  // and any internal propagators needed to connect them
+
+  // First, find which vertices are touched by external propagators
+  const verticesOnExt = new Set();
+  const chain = [];
+
+  // Sort external props: those starting from extInId first, then by vertex id
+  const fromExtIn = extProps.filter(p => p.from === extInId);
+  const toExtOut = extProps.filter(p => p.to === extOutId);
+
+  if (fromExtIn.length === 0 && toExtOut.length === 0) {
+    // Fully disconnected external line (Topo 1, 3, 4, 5)
+    return [];
   }
-  const line = d3.line().curve(d3.curveBasis);
-  g.append("path")
-    .attr("d", line(points))
-    .attr("stroke", "#666")
-    .attr("stroke-width", 1.5)
-    .attr("fill", "none");
+
+  // For connected diagrams, trace: extIn -> v_a -> (internal?) -> v_b -> extOut
+  // Find the vertex connected to extIn and the vertex connected to extOut
+  let vStart = null, vEnd = null;
+
+  fromExtIn.forEach(p => { if (vIdSet.has(p.to)) vStart = p.to; });
+  toExtOut.forEach(p => { if (vIdSet.has(p.from)) vEnd = p.from; });
+
+  if (vStart === null || vEnd === null) {
+    // One external prop goes directly extIn->extOut
+    const direct = extProps.find(p => p.from === extInId && p.to === extOutId);
+    if (direct) return [direct];
+    return [];
+  }
+
+  // Add ext_in -> vStart
+  const startProp = fromExtIn.find(p => p.to === vStart);
+  if (startProp) chain.push(startProp);
+
+  if (vStart === vEnd) {
+    // Single vertex on main line
+    const endProp = toExtOut.find(p => p.from === vEnd);
+    if (endProp) chain.push(endProp);
+    return chain;
+  }
+
+  // Need to find internal propagator(s) connecting vStart to vEnd on the main line
+  // For 2-vertex diagrams: look for internal edge from vStart to vEnd (spin Up preferred as main line)
+  const connecting = internalEdges.find(p =>
+    (p.from === vStart && p.to === vEnd) ||
+    (p.from === vEnd && p.to === vStart)
+  );
+
+  if (connecting) {
+    // Ensure correct direction
+    if (connecting.from === vStart && connecting.to === vEnd) {
+      chain.push(connecting);
+    } else {
+      chain.push({ ...connecting, from: vStart, to: vEnd });
+    }
+  }
+
+  const endProp = toExtOut.find(p => p.from === vEnd);
+  if (endProp) chain.push(endProp);
+
+  return chain;
 }
 
-function renderDiagram(svg, diag, topoId, weight) {
-  const { positions, vIds, extInId, extOutId, props, vertices } = buildLayout(diag);
-  const { selfLoops, extLines, internalEdges, disconnectedExt } = classifyProps(props, extInId, extOutId, vIds);
+/* ------------------------------------------------------------------ */
+/*  Draw arrow marker at a point along a line                         */
+/* ------------------------------------------------------------------ */
 
-  const defs = svg.append("defs");
+function drawArrowHead(g, x, y, angle, color, size) {
+  size = size || 5;
+  const cos = Math.cos(angle), sin = Math.sin(angle);
+  const x1 = x - size * cos + size * 0.5 * sin;
+  const y1 = y - size * sin - size * 0.5 * cos;
+  const x2 = x - size * cos - size * 0.5 * sin;
+  const y2 = y - size * sin + size * 0.5 * cos;
+  g.append("path")
+    .attr("d", `M ${x} ${y} L ${x1} ${y1} L ${x2} ${y2} Z`)
+    .attr("fill", color);
+}
 
-  // Arrow markers for each spin color
-  ["Up", "Down"].forEach(spin => {
-    const color = spinColor(spin);
-    const markerId = `arrow-${spin}-${topoId}`;
-    defs.append("marker")
-      .attr("id", markerId)
-      .attr("viewBox", "0 0 10 10")
-      .attr("refX", 5)
-      .attr("refY", 5)
-      .attr("markerWidth", 8)
-      .attr("markerHeight", 8)
-      .attr("orient", "auto")
-      .append("path")
-      .attr("d", "M 0 1 L 10 5 L 0 9 Z")
-      .attr("fill", color);
-  });
+/* ------------------------------------------------------------------ */
+/*  Draw a propagator line with arrow                                 */
+/* ------------------------------------------------------------------ */
 
-  // Dashed arrow marker for external legs
-  ["Up", "Down"].forEach(spin => {
-    const color = spinColor(spin);
-    const markerId = `arrow-ext-${spin}-${topoId}`;
-    defs.append("marker")
-      .attr("id", markerId)
-      .attr("viewBox", "0 0 10 10")
-      .attr("refX", 5)
-      .attr("refY", 5)
-      .attr("markerWidth", 8)
-      .attr("markerHeight", 8)
-      .attr("orient", "auto")
-      .append("path")
-      .attr("d", "M 0 1 L 10 5 L 0 9 Z")
-      .attr("fill", color);
-  });
+function drawPropLine(g, x1, y1, x2, y2, color, dashed) {
+  const line = g.append("line")
+    .attr("x1", x1).attr("y1", y1)
+    .attr("x2", x2).attr("y2", y2)
+    .attr("stroke", color)
+    .attr("stroke-width", dashed ? 1.5 : 2);
+  if (dashed) {
+    line.attr("stroke-dasharray", "6,4");
+  }
+  // Arrow at midpoint
+  const mx = (x1 + x2) / 2;
+  const my = (y1 + y2) / 2;
+  const angle = Math.atan2(y2 - y1, x2 - x1);
+  drawArrowHead(g, mx, my, angle, color, 5);
+}
 
-  // Grey arrow for disconnected external
-  const discMarkerId = `arrow-disc-${topoId}`;
-  defs.append("marker")
-    .attr("id", discMarkerId)
-    .attr("viewBox", "0 0 10 10")
-    .attr("refX", 5)
-    .attr("refY", 5)
-    .attr("markerWidth", 8)
-    .attr("markerHeight", 8)
-    .attr("orient", "auto")
-    .append("path")
-    .attr("d", "M 0 1 L 10 5 L 0 9 Z")
-    .attr("fill", "#888");
+/* ------------------------------------------------------------------ */
+/*  Draw a curved propagator (arc) with arrow                         */
+/* ------------------------------------------------------------------ */
 
-  const g = svg.append("g");
-  let labelIdx = 0;
+function drawArcProp(g, x1, y1, x2, y2, curveOffset, color, labelText, labelSide) {
+  const mx = (x1 + x2) / 2;
+  const my = (y1 + y2) / 2 + curveOffset;
 
-  // --- Disconnected external lines ---
-  disconnectedExt.forEach(p => {
-    const y = DIAGRAM_H - MARGIN.bottom + 15;
-    const x0 = positions[extInId].x;
-    const x1 = positions[extOutId].x;
-    g.append("line")
-      .attr("x1", x0).attr("y1", y)
-      .attr("x2", x1).attr("y2", y)
-      .attr("stroke", "#888")
-      .attr("stroke-width", 1.5)
-      .attr("stroke-dasharray", "6,4")
-      .attr("marker-mid", `url(#${discMarkerId})`);
-    // Add midpoint arrow manually
-    const mx = (x0 + x1) / 2;
-    g.append("path")
-      .attr("d", `M ${mx - 5} ${y - 4} L ${mx + 5} ${y} L ${mx - 5} ${y + 4} Z`)
-      .attr("fill", "#888");
+  const path = d3.path();
+  path.moveTo(x1, y1);
+  path.quadraticCurveTo(mx, my, x2, y2);
+
+  g.append("path")
+    .attr("d", path.toString())
+    .attr("fill", "none")
+    .attr("stroke", color)
+    .attr("stroke-width", 2);
+
+  // Arrow at midpoint of quadratic bezier (t=0.5)
+  const t = 0.5;
+  const bx = (1-t)*(1-t)*x1 + 2*(1-t)*t*mx + t*t*x2;
+  const by = (1-t)*(1-t)*y1 + 2*(1-t)*t*my + t*t*y2;
+  const tx = 2*(1-t)*(mx - x1) + 2*t*(x2 - mx);
+  const ty = 2*(1-t)*(my - y1) + 2*t*(y2 - my);
+  const angle = Math.atan2(ty, tx);
+  drawArrowHead(g, bx, by, angle, color, 5);
+
+  // Label
+  if (labelText) {
+    const labelY = my + (labelSide === "below" ? 14 : -6);
     g.append("text")
-      .attr("x", x0 - 8).attr("y", y + 4)
-      .attr("text-anchor", "end")
-      .attr("font-size", "11px")
-      .attr("fill", "#888")
-      .text("in");
-    g.append("text")
-      .attr("x", x1 + 8).attr("y", y + 4)
-      .attr("text-anchor", "start")
-      .attr("font-size", "11px")
-      .attr("fill", "#888")
-      .text("out");
-    const lx = (x0 + x1) / 2;
-    g.append("text")
-      .attr("x", lx).attr("y", y - 8)
-      .attr("text-anchor", "middle")
-      .attr("font-size", "10px")
-      .attr("fill", spinColor(p.spin))
-      .text(`k${labelIdx}, i\u03C9${labelIdx} ${spinArrow(p.spin)}`);
-    labelIdx++;
-  });
-
-  // --- External legs (connected to vertices) ---
-  extLines.forEach(p => {
-    const vIdSet = new Set(vIds);
-    let startPos, endPos;
-    if (p.from === extInId) {
-      startPos = positions[extInId];
-      endPos = vIdSet.has(p.to) ? positions[p.to] : positions[extOutId];
-    } else if (p.to === extOutId) {
-      startPos = vIdSet.has(p.from) ? positions[p.from] : positions[extInId];
-      endPos = positions[extOutId];
-    } else {
-      startPos = positions[p.from] || positions[extInId];
-      endPos = positions[p.to] || positions[extOutId];
-    }
-
-    const color = spinColor(p.spin);
-    const mx = (startPos.x + endPos.x) / 2;
-    const my = (startPos.y + endPos.y) / 2;
-
-    g.append("line")
-      .attr("x1", startPos.x).attr("y1", startPos.y)
-      .attr("x2", endPos.x).attr("y2", endPos.y)
-      .attr("stroke", color)
-      .attr("stroke-width", 1.8)
-      .attr("stroke-dasharray", "6,4");
-
-    // Midpoint arrow
-    const angle = Math.atan2(endPos.y - startPos.y, endPos.x - startPos.x);
-    const aSize = 5;
-    g.append("path")
-      .attr("d", `M ${mx + aSize * Math.cos(angle)} ${my + aSize * Math.sin(angle)} ` +
-                  `L ${mx - aSize * Math.cos(angle) + aSize * Math.sin(angle)} ${my - aSize * Math.sin(angle) - aSize * Math.cos(angle)} ` +
-                  `L ${mx - aSize * Math.cos(angle) - aSize * Math.sin(angle)} ${my - aSize * Math.sin(angle) + aSize * Math.cos(angle)} Z`)
-      .attr("fill", color);
-
-    // "in" / "out" labels
-    if (p.from === extInId) {
-      g.append("text")
-        .attr("x", startPos.x - 8).attr("y", startPos.y + 4)
-        .attr("text-anchor", "end")
-        .attr("font-size", "11px")
-        .attr("fill", color)
-        .text("in");
-    }
-    if (p.to === extOutId) {
-      g.append("text")
-        .attr("x", endPos.x + 8).attr("y", endPos.y + 4)
-        .attr("text-anchor", "start")
-        .attr("font-size", "11px")
-        .attr("fill", color)
-        .text("out");
-    }
-
-    // Momentum label
-    const labelOffsetY = -10;
-    g.append("text")
-      .attr("x", mx).attr("y", my + labelOffsetY)
+      .attr("x", mx).attr("y", labelY)
       .attr("text-anchor", "middle")
       .attr("font-size", "10px")
       .attr("fill", color)
-      .text(`k${labelIdx}, i\u03C9${labelIdx} ${spinArrow(p.spin)}`);
-    labelIdx++;
+      .text(labelText);
+  }
+}
+
+/* ------------------------------------------------------------------ */
+/*  Draw a self-loop (tadpole) as a circle above the vertex           */
+/* ------------------------------------------------------------------ */
+
+function drawTadpole(g, cx, vertexY, color, labelText, offsetX) {
+  offsetX = offsetX || 0;
+  const loopRadius = 14;
+  const dashedLineTop = vertexY - 30;
+  const loopCenterY = dashedLineTop - loopRadius - 4;
+
+  // Dashed interaction line going up from vertex
+  g.append("line")
+    .attr("x1", cx + offsetX).attr("y1", vertexY - VERTEX_RADIUS)
+    .attr("x2", cx + offsetX).attr("y2", loopCenterY + loopRadius)
+    .attr("stroke", INTERACTION_COLOR)
+    .attr("stroke-width", 1.5)
+    .attr("stroke-dasharray", "4,3");
+
+  // Circle loop
+  g.append("circle")
+    .attr("cx", cx + offsetX)
+    .attr("cy", loopCenterY)
+    .attr("r", loopRadius)
+    .attr("fill", "none")
+    .attr("stroke", color)
+    .attr("stroke-width", 2);
+
+  // Arrow on the loop (at top)
+  drawArrowHead(g, cx + offsetX + loopRadius * 0.1, loopCenterY - loopRadius, 0, color, 4);
+
+  // Label
+  if (labelText) {
+    g.append("text")
+      .attr("x", cx + offsetX + loopRadius + 6)
+      .attr("y", loopCenterY + 3)
+      .attr("text-anchor", "start")
+      .attr("font-size", "10px")
+      .attr("fill", color)
+      .text(labelText);
+  }
+
+  // "q" label on dashed line
+  g.append("text")
+    .attr("x", cx + offsetX + 8)
+    .attr("y", (vertexY + loopCenterY + loopRadius) / 2)
+    .attr("text-anchor", "start")
+    .attr("font-size", "10px")
+    .attr("font-style", "italic")
+    .attr("fill", INTERACTION_COLOR)
+    .text("q");
+}
+
+/* ------------------------------------------------------------------ */
+/*  Draw a bubble (two antiparallel arcs) above the main line         */
+/* ------------------------------------------------------------------ */
+
+function drawBubble(g, x1, x2, mainY, edges, labelIdx) {
+  const bubbleCenterX = (x1 + x2) / 2;
+  const bubbleTopY = mainY - 90;
+  const bubbleBottomY = mainY - 40;
+
+  // Dashed interaction line from v1 up
+  g.append("line")
+    .attr("x1", x1).attr("y1", mainY - VERTEX_RADIUS)
+    .attr("x2", x1).attr("y2", bubbleBottomY)
+    .attr("stroke", INTERACTION_COLOR)
+    .attr("stroke-width", 1.5)
+    .attr("stroke-dasharray", "4,3");
+
+  // Dashed interaction line from v2 up
+  g.append("line")
+    .attr("x1", x2).attr("y1", mainY - VERTEX_RADIUS)
+    .attr("x2", x2).attr("y2", bubbleBottomY)
+    .attr("stroke", INTERACTION_COLOR)
+    .attr("stroke-width", 1.5)
+    .attr("stroke-dasharray", "4,3");
+
+  // Draw arcs for the bubble edges
+  let idx = labelIdx;
+  edges.forEach((edge, i) => {
+    const color = spinColor(edge.spin);
+    const curveDir = (i === 0) ? -1 : 1; // first goes up (more), second goes down (less)
+    const curveAmount = 25 * curveDir;
+
+    const startX = x1;
+    const endX = x2;
+    const baseY = (bubbleTopY + bubbleBottomY) / 2;
+
+    // Determine direction: from -> to
+    let sx, ex;
+    if (edge.from < edge.to) {
+      sx = startX; ex = endX;
+    } else {
+      sx = endX; ex = startX;
+    }
+
+    const label = `k${idx}${spinLabel(edge.spin)}`;
+    drawArcProp(g, sx, baseY, ex, baseY, curveAmount, color, label, curveDir < 0 ? "above" : "below");
+    idx++;
   });
 
-  // --- Self-loops (tadpoles) ---
-  // Group by vertex to offset multiple loops
+  return idx;
+}
+
+/* ------------------------------------------------------------------ */
+/*  Main rendering function                                           */
+/* ------------------------------------------------------------------ */
+
+function renderDiagram(svg, diag, topoId) {
+  const info = analyzeDiagram(diag);
+  const {
+    vIds, extInId, extOutId, vIdSet,
+    selfLoops, disconnectedExt,
+    mainChain, aboveEdges, mainVertices, disconnectedVertices
+  } = info;
+
+  const g = svg.append("g");
+  const mainY = DIAGRAM_H - MARGIN.bottom - 40;
+  const usableW = DIAGRAM_W - MARGIN.left - MARGIN.right;
+
+  // Compute vertex positions on main line
+  const positions = {};
+  const extInX = MARGIN.left - 20;
+  const extOutX = DIAGRAM_W - MARGIN.right + 20;
+  positions[extInId] = { x: extInX, y: mainY };
+  positions[extOutId] = { x: extOutX, y: mainY };
+
+  const isConnected = mainChain.length > 0;
+
+  if (isConnected) {
+    // Place main vertices evenly along the main line
+    const nMainVerts = mainVertices.length;
+    mainVertices.forEach((vid, i) => {
+      const x = MARGIN.left + usableW * (i + 1) / (nMainVerts + 1);
+      positions[vid] = { x, y: mainY };
+    });
+  }
+
+  // Place disconnected vertices above the main line
+  if (disconnectedVertices.length > 0) {
+    const aboveY = mainY - 80;
+    const nDisc = disconnectedVertices.length;
+    const centerX = DIAGRAM_W / 2;
+    if (nDisc === 1) {
+      positions[disconnectedVertices[0]] = { x: centerX, y: aboveY };
+    } else {
+      const spread = Math.min(usableW * 0.4, 120);
+      disconnectedVertices.forEach((vid, i) => {
+        const x = centerX + (i - (nDisc - 1) / 2) * spread;
+        positions[vid] = { x, y: aboveY };
+      });
+    }
+  }
+
+  let labelIdx = 0;
+
+  // ================================================================
+  // DRAW MAIN PROPAGATOR LINE
+  // ================================================================
+
+  if (isConnected) {
+    // Draw main chain segments
+    mainChain.forEach((seg, i) => {
+      const fromPos = positions[seg.from] || positions[extInId];
+      const toPos = positions[seg.to] || positions[extOutId];
+      const color = spinColor(seg.spin);
+
+      // Thick solid line
+      g.append("line")
+        .attr("x1", fromPos.x).attr("y1", fromPos.y)
+        .attr("x2", toPos.x).attr("y2", toPos.y)
+        .attr("stroke", color)
+        .attr("stroke-width", 2.5);
+
+      // Arrow at midpoint
+      const mx = (fromPos.x + toPos.x) / 2;
+      const my = (fromPos.y + toPos.y) / 2;
+      const angle = Math.atan2(toPos.y - fromPos.y, toPos.x - fromPos.x);
+      drawArrowHead(g, mx, my, angle, color, 6);
+
+      // Label
+      const label = (i === 0 && mainChain.length >= 2) ? `k${spinLabel(seg.spin)}`
+                   : (i === mainChain.length - 1 && mainChain.length >= 2) ? `k${spinLabel(seg.spin)}`
+                   : `k${labelIdx}${spinLabel(seg.spin)}`;
+
+      g.append("text")
+        .attr("x", mx).attr("y", my + 18)
+        .attr("text-anchor", "middle")
+        .attr("font-size", "10px")
+        .attr("font-style", "italic")
+        .attr("fill", color)
+        .text(label);
+
+      labelIdx++;
+    });
+
+    // Time labels: tau on left, 0 on right
+    g.append("text")
+      .attr("x", extInX - 10).attr("y", mainY + 5)
+      .attr("text-anchor", "end")
+      .attr("font-size", "12px")
+      .attr("font-style", "italic")
+      .attr("fill", "#333")
+      .text("\u03C4");
+
+    g.append("text")
+      .attr("x", extOutX + 10).attr("y", mainY + 5)
+      .attr("text-anchor", "start")
+      .attr("font-size", "12px")
+      .attr("fill", "#333")
+      .text("0");
+  }
+
+  // ================================================================
+  // DISCONNECTED EXTERNAL LINE (bottom, dashed)
+  // ================================================================
+
+  if (disconnectedExt.length > 0) {
+    const discY = isConnected ? mainY + 30 : mainY;
+    disconnectedExt.forEach(p => {
+      const color = spinColor(p.spin);
+      g.append("line")
+        .attr("x1", extInX).attr("y1", discY)
+        .attr("x2", extOutX).attr("y2", discY)
+        .attr("stroke", "#888")
+        .attr("stroke-width", 1.8)
+        .attr("stroke-dasharray", "8,4");
+
+      // Arrow at midpoint
+      const mx = (extInX + extOutX) / 2;
+      drawArrowHead(g, mx, discY, 0, "#888", 6);
+
+      // Labels
+      g.append("text")
+        .attr("x", mx).attr("y", discY - 10)
+        .attr("text-anchor", "middle")
+        .attr("font-size", "10px")
+        .attr("font-style", "italic")
+        .attr("fill", spinColor(p.spin))
+        .text(`k${spinLabel(p.spin)}`);
+
+      g.append("text")
+        .attr("x", extInX - 10).attr("y", discY + 5)
+        .attr("text-anchor", "end")
+        .attr("font-size", "12px")
+        .attr("font-style", "italic")
+        .attr("fill", "#333")
+        .text("\u03C4");
+
+      g.append("text")
+        .attr("x", extOutX + 10).attr("y", discY + 5)
+        .attr("text-anchor", "start")
+        .attr("font-size", "12px")
+        .attr("fill", "#333")
+        .text("0");
+    });
+  }
+
+  // ================================================================
+  // SELF-LOOPS (tadpoles) drawn above vertices
+  // ================================================================
+
   const loopsByVertex = {};
   selfLoops.forEach(p => {
     if (!loopsByVertex[p.from]) loopsByVertex[p.from] = [];
     loopsByVertex[p.from].push(p);
   });
 
-  Object.entries(loopsByVertex).forEach(([vId, loops]) => {
+  Object.entries(loopsByVertex).forEach(([vIdStr, loops]) => {
+    const vId = parseInt(vIdStr);
+    const pos = positions[vId];
+    if (!pos) return;
+
     loops.forEach((p, li) => {
-      const pos = positions[vId];
+      const offsetX = loops.length > 1 ? (li - (loops.length - 1) / 2) * 30 : 0;
       const color = spinColor(p.spin);
-      // Offset: first loop above, second below; if more, alternate
-      const direction = (li % 2 === 0) ? -1 : 1; // -1 = above, 1 = below
-      const loopH = 32 + (Math.floor(li / 2)) * 12;
-      const loopW = 18;
-
-      const cx = pos.x;
-      const cy = pos.y;
-      const tipY = cy + direction * loopH;
-
-      // Teardrop path: start at vertex, curve out and back
-      const path = d3.path();
-      path.moveTo(cx, cy);
-      path.bezierCurveTo(
-        cx - loopW, cy + direction * loopH * 0.4,
-        cx - loopW * 0.6, tipY,
-        cx, tipY
-      );
-      path.bezierCurveTo(
-        cx + loopW * 0.6, tipY,
-        cx + loopW, cy + direction * loopH * 0.4,
-        cx, cy
-      );
-
-      g.append("path")
-        .attr("d", path.toString())
-        .attr("fill", "none")
-        .attr("stroke", color)
-        .attr("stroke-width", 1.8);
-
-      // Arrow at the tip of the loop
-      const arrowY = tipY;
-      const arrowDir = 1; // pointing right at tip
-      g.append("path")
-        .attr("d", `M ${cx - 4} ${arrowY - direction * 3} L ${cx + 1} ${arrowY} L ${cx - 4} ${arrowY + direction * 3} Z`)
-        .attr("fill", color);
-
-      // Label
-      g.append("text")
-        .attr("x", cx + loopW + 4)
-        .attr("y", tipY + direction * 2)
-        .attr("text-anchor", "start")
-        .attr("font-size", "10px")
-        .attr("fill", color)
-        .text(`k${labelIdx}, i\u03C9${labelIdx} ${spinArrow(p.spin)}`);
+      const label = `k${labelIdx}${spinLabel(p.spin)}`;
+      drawTadpole(g, pos.x, pos.y, color, label, offsetX);
       labelIdx++;
     });
   });
 
-  // --- Internal edges (between different vertices) ---
-  // Group parallel edges between same vertex pair to offset them
+  // ================================================================
+  // ABOVE EDGES (internal edges not on main line)
+  // ================================================================
+
+  // Group by vertex pair
   const edgeGroups = {};
-  internalEdges.forEach(p => {
+  aboveEdges.forEach(p => {
     const key = [Math.min(p.from, p.to), Math.max(p.from, p.to)].join("-");
     if (!edgeGroups[key]) edgeGroups[key] = [];
     edgeGroups[key].push(p);
   });
 
-  Object.values(edgeGroups).forEach(group => {
-    group.forEach((p, gi) => {
-      const fromPos = positions[p.from];
-      const toPos = positions[p.to];
-      if (!fromPos || !toPos) return;
+  Object.entries(edgeGroups).forEach(([key, edges]) => {
+    const [v1, v2] = key.split("-").map(Number);
+    const pos1 = positions[v1];
+    const pos2 = positions[v2];
+    if (!pos1 || !pos2) return;
 
-      const color = spinColor(p.spin);
-      const n = group.length;
-      // Vertical offset for parallel edges
-      const offsetBase = 35;
-      let offset;
-      if (n === 1) {
-        offset = 0;
-      } else {
-        offset = (gi - (n - 1) / 2) * offsetBase;
-      }
+    // Check if both vertices are on the main line
+    const bothOnMain = mainVertices.includes(v1) && mainVertices.includes(v2);
 
-      const mx = (fromPos.x + toPos.x) / 2;
-      const my = (fromPos.y + toPos.y) / 2 - offset;
-
-      // Quadratic Bezier
-      const path = d3.path();
-      path.moveTo(fromPos.x, fromPos.y);
-      path.quadraticCurveTo(mx, my, toPos.x, toPos.y);
-
-      g.append("path")
-        .attr("d", path.toString())
-        .attr("fill", "none")
-        .attr("stroke", color)
-        .attr("stroke-width", 1.8);
-
-      // Mid-line arrow
-      // Evaluate quadratic Bezier at t=0.5
-      const at = 0.5;
-      const bx = (1 - at) * (1 - at) * fromPos.x + 2 * (1 - at) * at * mx + at * at * toPos.x;
-      const by = (1 - at) * (1 - at) * fromPos.y + 2 * (1 - at) * at * my + at * at * toPos.y;
-      // Tangent at t=0.5
-      const tx = 2 * (1 - at) * (mx - fromPos.x) + 2 * at * (toPos.x - mx);
-      const ty = 2 * (1 - at) * (my - fromPos.y) + 2 * at * (toPos.y - my);
-      const angle = Math.atan2(ty, tx);
-      const aSize = 5;
-      g.append("path")
-        .attr("d", `M ${bx + aSize * Math.cos(angle)} ${by + aSize * Math.sin(angle)} ` +
-                    `L ${bx - aSize * Math.cos(angle) + aSize * Math.sin(angle)} ${by - aSize * Math.sin(angle) - aSize * Math.cos(angle)} ` +
-                    `L ${bx - aSize * Math.cos(angle) - aSize * Math.sin(angle)} ${by - aSize * Math.sin(angle) + aSize * Math.cos(angle)} Z`)
-        .attr("fill", color);
-
-      // Label
-      const labelY = my - 8 * Math.sign(offset || -1);
-      g.append("text")
-        .attr("x", mx).attr("y", labelY)
-        .attr("text-anchor", "middle")
-        .attr("font-size", "10px")
-        .attr("fill", color)
-        .text(`k${labelIdx}, i\u03C9${labelIdx} ${spinArrow(p.spin)}`);
+    if (bothOnMain && edges.length >= 2) {
+      // Draw as a bubble above the main line
+      labelIdx = drawBubble(g, pos1.x, pos2.x, mainY, edges, labelIdx);
+    } else if (bothOnMain && edges.length === 1) {
+      // Single arc above main line
+      const edge = edges[0];
+      const color = spinColor(edge.spin);
+      const label = `k${labelIdx}${spinLabel(edge.spin)}`;
+      const sx = positions[edge.from].x;
+      const ex = positions[edge.to].x;
+      drawArcProp(g, sx, mainY, ex, mainY, -60, color, label, "above");
       labelIdx++;
-    });
+
+      // Dashed interaction line hints
+      g.append("line")
+        .attr("x1", pos1.x).attr("y1", mainY - VERTEX_RADIUS)
+        .attr("x2", pos1.x).attr("y2", mainY - 30)
+        .attr("stroke", INTERACTION_COLOR)
+        .attr("stroke-width", 1.2)
+        .attr("stroke-dasharray", "4,3");
+    } else {
+      // Disconnected vertices: draw arcs between them
+      edges.forEach((edge, ei) => {
+        const color = spinColor(edge.spin);
+        const curveOffset = edges.length > 1 ? (ei === 0 ? -25 : 25) : -25;
+        const label = `k${labelIdx}${spinLabel(edge.spin)}`;
+        const sx = positions[edge.from].x;
+        const ex = positions[edge.to].x;
+        const sy = positions[edge.from].y;
+        const ey = positions[edge.to].y;
+        drawArcProp(g, sx, sy, ex, ey, curveOffset, color, label, curveOffset < 0 ? "above" : "below");
+        labelIdx++;
+      });
+    }
   });
 
-  // --- Vertices (drawn last so they appear on top) ---
-  vIds.forEach(id => {
-    const pos = positions[id];
+  // ================================================================
+  // DASHED INTERACTION LINES for disconnected vertices
+  // ================================================================
+
+  if (disconnectedVertices.length > 0 && disconnectedExt.length > 0) {
+    // Connect disconnected structures to main line conceptually
+    // Draw a light dashed line from the disconnected vertex area down
+    disconnectedVertices.forEach(vid => {
+      const pos = positions[vid];
+      if (!pos) return;
+      const targetY = isConnected ? mainY : mainY;
+      // Only draw if vertex has no connection to main line already shown
+      g.append("line")
+        .attr("x1", pos.x).attr("y1", pos.y + VERTEX_RADIUS)
+        .attr("x2", pos.x).attr("y2", targetY - 10)
+        .attr("stroke", INTERACTION_COLOR)
+        .attr("stroke-width", 1)
+        .attr("stroke-dasharray", "3,4")
+        .attr("opacity", 0.4);
+    });
+  }
+
+  // ================================================================
+  // VERTICES (drawn last to be on top)
+  // ================================================================
+
+  vIds.forEach(vid => {
+    const pos = positions[vid];
+    if (!pos) return;
+
+    // Black filled circle
     g.append("circle")
       .attr("cx", pos.x)
       .attr("cy", pos.y)
       .attr("r", VERTEX_RADIUS)
       .attr("fill", "#000")
-      .attr("stroke", "#000");
+      .attr("stroke", "#000")
+      .attr("stroke-width", 1);
 
-    // Wavy interaction line from vertex
-    drawWavyLine(g, pos.x, pos.y, 30, 4, 3);
-
-    // Vertex label below
+    // Vertex label
+    const isOnMain = mainVertices.includes(vid);
+    const labelY = isOnMain ? pos.y + 32 : pos.y + 20;
     g.append("text")
       .attr("x", pos.x)
-      .attr("y", pos.y + VERTEX_RADIUS + 14)
+      .attr("y", labelY)
       .attr("text-anchor", "middle")
       .attr("font-size", "11px")
       .attr("font-weight", "600")
-      .attr("fill", "#333")
-      .text(`v${id}`);
+      .attr("fill", "#555")
+      .text(`\u03C4${vid}`);
   });
+
+  // External point markers (small open circles)
+  if (isConnected) {
+    [extInId, extOutId].forEach(eid => {
+      const pos = positions[eid];
+      g.append("circle")
+        .attr("cx", pos.x)
+        .attr("cy", pos.y)
+        .attr("r", 3)
+        .attr("fill", "#fff")
+        .attr("stroke", "#333")
+        .attr("stroke-width", 1.5);
+    });
+  }
 }
 
-// --- Build cards ---
+/* ------------------------------------------------------------------ */
+/*  Build cards for each diagram                                      */
+/* ------------------------------------------------------------------ */
+
 const container = d3.select("#container");
 
 data.diagrams.forEach(entry => {
@@ -464,11 +700,9 @@ data.diagrams.forEach(entry => {
 
   const body = card.append("div").attr("class", "card-body");
 
-  // Adjust height for disconnected external lines
   const diag = entry.diagram;
   const vIds = diag.vertices.map(v => v.id).sort((a, b) => a - b);
   const maxVId = Math.max(...vIds);
-  const extOutId = maxVId + 1;
   const vIdSet = new Set(vIds);
   const hasDisconnected = diag.propagators.some(p =>
     p.external && !vIdSet.has(p.from) && !vIdSet.has(p.to)
@@ -480,7 +714,7 @@ data.diagrams.forEach(entry => {
     .attr("height", h)
     .attr("viewBox", `0 0 ${DIAGRAM_W} ${h}`);
 
-  renderDiagram(svg, diag, entry.topology_id, entry.weight);
+  renderDiagram(svg, diag, entry.topology_id);
 });
 
 </script>
