@@ -171,3 +171,32 @@ The particle-particle bubble (bare susceptibility) is chi_0(q, i_nu_m) = -1/(N*b
 ### Thouless criterion
 
 The superconducting instability occurs when the T-matrix diverges, i.e., when 1 - U * chi_0(q=0, i_nu_0=0) = 0. This is the Thouless criterion. The critical temperature Tc is found by bisection: scanning temperature until the criterion is satisfied. For the attractive Hubbard model (U < 0), chi_0 is negative, so U*chi_0 = |U|*|chi_0| > 0 and the criterion becomes 1 - |U|*|chi_0| = 0. The divergence signals the Cooper instability and onset of pair condensation.
+
+## Documentation
+
+This project uses [mdBook](https://rust-lang.github.io/mdBook/) for detailed documentation covering theory, usage guides, and visualization.
+
+### Building the docs
+
+```bash
+cargo install mdbook    # install mdBook (once)
+
+mdbook build book/      # build English docs -> target/book/
+mdbook build book-ja/   # build Japanese docs -> target/book-ja/
+```
+
+### Previewing locally
+
+```bash
+mdbook serve book/      # English: http://localhost:3000
+mdbook serve book-ja/   # Japanese: http://localhost:3000
+```
+
+### Documentation structure
+
+| Section | Content |
+|---|---|
+| **Theory** | Hubbard model, perturbation theory, Wick's theorem, Feynman diagrams, ladder resummation |
+| **Getting Started** | Installation, quick start with examples |
+| **Guide** | Module-by-module usage with code examples |
+| **Visualization** | Graphviz DOT export, D3.js interactive diagrams |
