@@ -2,54 +2,39 @@
 
 ## 概要
 
-`feynman-engine` は、引力Hubbard模型の有限温度における摂動展開を自動化するRustライブラリである。フェルミオン演算子からWick定理を適用して全ての縮約をスピン保存則とフェルミオン符号付きで生成し、Feynmanダイアグラムを構築してトポロジーごとに分類した上で、Feynman rulesにより記号式（式木）へ変換する。数値計算側では、松原形式で粒子-粒子（PP）感受率を評価し、梯子型再総和（Bethe-Salpeter方程式）を通じてT行列を求め、Thouless判定条件 1 - U*chi_0 = 0 を二分法で解くことにより超伝導転移温度 Tc を決定する。
+`feynman-engine` は有限温度における引力 Hubbard 模型の摂動展開を自動化する Rust ライブラリです。フェルミオン演算子から出発し、Wick の定理を適用してフェルミオン符号とスピン保存を満たすすべての縮約を生成し、Feynman 図を構成してトポロジーで分類し、Feynman 規則により記号的な式へ変換します。数値計算側では、松原形式で粒子-粒子感受率を評価し、梯子型再総和（Bethe-Salpeter 方程式）により Thouless 判定条件を通じて超伝導臨界温度 Tc を求めます。
 
 ## 機能一覧
 
-- Wick縮約の自動生成（スピン保存則によるフィルタリング、置換の反転数によるフェルミオン符号計算）
-- Feynmanダイアグラムの生成とトポロジー分類（頂点記述子の正規化による一意な同定）
-- 記号式ツリー（Expr）とFeynman rulesによる自動変換
-- PP梯子型再総和（Bethe-Salpeter方程式によるT行列計算）
-- Thouless判定条件による Tc ファインダー（二分法）
-- Graphviz DOT形式での可視化（スピン上=青、スピン下=赤、外線=破線）
+- スピン保存とフェルミオン符号を考慮した自動 Wick 縮約
+- Feynman 図の生成とトポロジー分類
+- Feynman 規則に基づく記号式ツリー
+- 粒子-粒子梯子型再総和（Bethe-Salpeter）
+- Thouless 判定条件に基づく Tc 探索（二分法）
+- Graphviz DOT による可視化（スピンで色分けした伝播線）
 
 ## インストール
 
-Rust 2021 editionが必要である。依存クレート: `num-complex`, `rayon`, `itertools`。
-
 ```bash
-# リポジトリをクローン
 git clone <repo-url>
 cd feynman
-
-# ライブラリとバイナリをビルド
 cargo build
-
-# 全テスト（ユニットテスト＋結合テスト）を実行（約0.5秒）
 cargo test
 ```
 
-特定モジュールのテストのみ実行する場合:
-
-```bash
-# algebra::wick モジュールのテストを実行
-cargo test algebra::wick
-
-# 結合テストのみ実行
-cargo test --test test_integration
-```
+リポジトリの URL を指定してクローンし、プロジェクト直下で `cargo build` と `cargo test` を実行してください。
 
 ## 使い方
 
 ### 梯子型再総和 (ladder resummation)
 
-2D正方格子上の引力Hubbard模型に対し、PP梯子型再総和により超伝導転移温度 Tc を求める。
+正方格子上の引力 Hubbard 模型で超伝導臨界温度 Tc を Thouless 判定条件により求めます。
 
 ```bash
 cargo run --example ladder_resummation
 ```
 
-出力:
+出力例（全出力）:
 
 ```
 === Ladder Resummation: Attractive Hubbard Model ===
@@ -59,32 +44,32 @@ Searching for Tc via Thouless criterion (n_matsubara = 256)...
 Tc = 0.223253
 
 === Thouless Criterion: 1 - U * chi_0(q=0, nu=0) ===
-T            chi_0(q=0)           1 - U*chi_0
+T            chi_0(q=0)           1 - U*chi_0         
 ----------------------------------------------------
-0.178603     -0.56792543          -0.13585086
-0.200928     -0.53070584          -0.06141169
-0.212091     -0.51465041          -0.02930081
-0.223253     -0.49996228          0.00007544
-0.234416     -0.48645102          0.02709796
-0.245579     -0.47396132          0.05207736
-0.334880     -0.39902075          0.20195849
-0.446507     -0.33946158          0.32107685
+0.178603     -0.56792543          -0.13585086         
+0.200928     -0.53070584          -0.06141169         
+0.212091     -0.51465041          -0.02930081         
+0.223253     -0.49996228          0.00007544          
+0.234416     -0.48645102          0.02709796          
+0.245579     -0.47396132          0.05207736          
+0.334880     -0.39902075          0.20195849          
+0.446507     -0.33946158          0.32107685          
 
 At T = Tc, the Thouless criterion 1 - U*chi_0 should vanish,
 signaling the onset of superconducting instability.
 ```
 
-**物理的意味**: Thouless判定条件 1 - U*chi_0(q=0, i*nu_0=0) = 0 が満たされる温度が超伝導転移温度 Tc である。引力Hubbard模型（U < 0）では、PP感受率 chi_0 が負の値を取るため、U*chi_0 = |U|*|chi_0| > 0 となる。温度を下げると |chi_0| が増大し、|U|*|chi_0| = 1 に達した時点でT行列が発散する。これはCooper不安定性の発現、すなわちs波超伝導秩序の形成を示す。上の出力では、T = 0.223253 付近で 1 - U*chi_0 がほぼ0に近づいていることが確認できる。
+**物理的な意味:** Thouless 判定条件は 1 − Uχ₀(q=0, iν₀=0) = 0 で与えられ、この式がゼロになる温度が超伝導臨界温度 Tc です。引力 Hubbard 模型（U < 0）では粒子-粒子（pp）チャネルに Cooper 不安定性が生じ、T を下げていくとこの条件が満たされ、対凝縮の onset が表れます。
 
 ### 自己エネルギーダイアグラム
 
-Hubbard模型の1次および2次自己エネルギーダイアグラムを生成し、トポロジーごとに分類して記号式を出力する。
+1 次および 2 次の自己エネルギーダイアグラムを生成・分類します。
 
 ```bash
 cargo run --example second_order_self_energy
 ```
 
-出力（DOT出力部分は省略）:
+出力例:
 
 ```
 === Attractive Hubbard Model ===
@@ -108,210 +93,92 @@ Topology 2 (weight = -1):
   Expression: Σ_k1,ω1 [(-2 × G₀(k1, iω1))]
 
 === 2nd Order Self-Energy Diagrams ===
-Topology 1 (weight = 1):
-  Order 2: 3 loop(s), 4 internal propagators
-  ...
-(7つのトポロジーが出力される)
+... 7 topologies (4 internal propagators × 3, or 3 internal × 4) ...
 ```
 
-**各トポロジーの物理的意味**:
+続いて Graphviz 用の DOT 形式で全トポロジーの図が標準出力に出力されます。
 
-- **1次 Topology 1**: Hartree項に対応する。2つの内部伝播関数からなるループを含み、自己エネルギーへの平均場的な寄与を表す。
-- **1次 Topology 2**: Fock項（交換項）に対応する。1つの内部伝播関数によるタドポール型のダイアグラムであり、交換相互作用による自己エネルギー補正を表す。
-- **2次トポロジー（7種類）**: 2次の摂動寄与であり、2つの相互作用頂点を含む。粒子-粒子チャンネル、粒子-ホールチャンネルなど異なる散乱過程に対応するダイアグラムが分類されている。
+**各トポロジーの物理的意味:**
 
-**Graphvizによる可視化**: DOT出力をファイルに保存し、Graphvizで画像化できる。
+- **1 次 Topology 1（weight=1）**: 2 本のループと 2 本の内線。Hartree 型の寄与（2 つの伝播線のループ）。
+- **1 次 Topology 2（weight=-1）**: 1 本のループと 1 本の内線。Fock 型の寄与（交換で符号が反転）。
+- **2 次の寄与**: 4 頂点・複数ループのダイアグラム群。繰り込みや散乱の 2 次効果を表します。
+
+**DOT 出力の可視化:** 例は標準出力に Graphviz の DOT 形式で全トポロジーの図を出力します。可視化するには、出力をファイルにリダイレクトしてから `dot` で画像に変換してください。
 
 ```bash
-# 例: DOT出力をファイルにリダイレクト（プログラム出力のDOT部分を保存）
-cargo run --example second_order_self_energy > output.txt
-
-# DOTファイルをPNG画像に変換
-dot -Tpng output.dot -o diagram.png
-
-# PDF形式で出力する場合
-dot -Tpdf output.dot -o diagram.pdf
+cargo run --example second_order_self_energy > diagrams.dot 2>&1
+# 先頭の "digraph AllDiagrams {" から "}" までを diagrams.dot に残し、
+dot -Tpng diagrams.dot -o diagrams.png
 ```
 
-可視化されたダイアグラムでは、スピン上の伝播関数が青、スピン下が赤で表示され、外部脚は破線で描画される。
+スピン上向き伝播線は青、下向きは赤、外線は破線で描画されます。
 
 ## アーキテクチャ
 
-データは以下の2つのパイプラインを通じてボトムアップに処理される。
+データは 2 本のパイプラインで下から上に流れます。
 
-**記号式パイプライン**（ダイアグラム生成）:
+**記号パイプライン**（図の生成）:
 
 ```
-フェルミオン演算子 → [Wick定理] → WickTerm (縮約 + 符号)
+FermionOperator → [Wick's theorem] → WickTerm (縮約 + 符号)
     → [generate_diagrams] → FeynmanDiagram (グラフ表現)
-    → [classify_diagrams] → 一意なトポロジー + 重み
-    → [apply_feynman_rules] → FeynmanExpression (記号式ツリー)
+    → [classify_diagrams] → 重み付きユニークトポロジー
+    → [apply_feynman_rules] → FeynmanExpression (記号 Expr ツリー)
 ```
 
 **数値パイプライン**（再総和）:
 
 ```
 HubbardModel + ThermalParams → evaluate_g0(k, iωₙ)
-    → compute_pp_susceptibility(q, iνₘ)  [χ₀ = pp bubble]
-    → solve_tmatrix / find_tc            [T = U/(1-Uχ₀), Thouless判定条件]
+    → compute_pp_susceptibility(q, iνₘ)  [χ₀ = pp バブル]
+    → solve_tmatrix / find_tc            [T = U/(1-Uχ₀), Thouless 判定]
 ```
 
 ### モジュール一覧
 
 | モジュール | 説明 |
 |---|---|
-| `algebra/` | フェルミオン演算子、スピン、縮約、Wick定理の実装 |
-| `models/` | 正方格子（k点グリッド、分散関係）、Hubbard模型のパラメータ |
-| `diagrams/` | Feynmanダイアグラムのグラフ表現、生成、トポロジー分類、Feynman rules |
-| `symbolic/` | 式木（`G0`, `U`, `Sum`, `Mul`, `Add` 等）と `Display` による可読な数式出力 |
-| `resummation/` | PP梯子型チャンネル、T行列、Thouless判定条件による Tc ファインダー |
-| `numerical/` | Green関数 G0(k, iwn) の評価、松原周波数和、PP感受率の計算 |
-| `visualization/` | Graphviz DOT形式でのエクスポート（スピン上=青、スピン下=赤） |
+| `algebra/` | フェルミオン演算子、スピン、縮約、Wick の定理 |
+| `models/` | 正方格子（k グリッド、分散）、Hubbard 模型パラメータ |
+| `diagrams/` | Feynman 図グラフ、生成、トポロジー分類、Feynman 規則 |
+| `symbolic/` | 式ツリー（`G0`, `U`, `Sum`, `Mul`, `Add`, ...）と `Display` |
+| `resummation/` | PP 梯子チャネル、T 行列、Thouless 判定 Tc 探索 |
+| `numerical/` | グリーン関数 G0(k, iωₙ)、松原和、PP 感受率 |
+| `visualization/` | Graphviz DOT 出力（スピン↑=青、スピン↓=赤） |
 
 ## 物理的背景
 
-### Hubbard模型
+### Hubbard 模型
 
-Hubbard模型は、格子上の電子のホッピングとオンサイト相互作用を記述する最も基本的な強相関電子系の模型である。ハミルトニアンは以下の通り:
+Hubbard 模型は格子上の電子のホッピングとオンサイト相互作用を記述します。ハミルトニアンは
 
-```
-H = -t Σ_{<i,j>,σ} c†_{i,σ} c_{j,σ} + U Σ_i n_{i,↑} n_{i,↓}
-```
+**H = −t Σ_{<ij>σ} c†_iσ c_jσ + U Σ_i n_{i↑} n_{i↓}**
 
-ここで t はホッピング積分、U はオンサイト相互作用、c†/c は生成・消滅演算子、n = c†c は数演算子である。
-
-2D正方格子上では、分散関係は以下のようになる:
-
-```
-ε(k) = -2t(cos kx + cos ky)
-```
-
-相互作用頂点は同一サイト・同一時間の4つのフェルミオン演算子 c†_↑ c_↑ c†_↓ c_↓ を結合度 U で結びつける。
-
-- **U < 0（引力）**: s波超伝導が発現する。PP梯子型チャンネルにCooper不安定性が生じる。
-- **U > 0（斥力）**: PPチャンネルには不安定性は生じない（反強磁性などの秩序が別チャンネルに現れる）。
+で定義されます。2 次元正方格子では分散は ε(k) = −2t(cos kx + cos ky) です。相互作用頂点は同一サイトの 4 つのフェルミオン演算子 c†↑ c↑ c†↓ c↓ を結合し、結合定数が U です。U < 0（引力）のとき s 波超伝導が可能で、U > 0（斥力）のときは粒子-粒子チャネルは発散しません。
 
 ### 松原形式
 
-有限温度 T = 1/beta における摂動論は、虚時間形式（松原形式）で定式化される。
+有限温度 T = 1/β では、時間順序の摂動論は虚時間で定式化されます。フェルミオンの松原周波数は **iωₙ = i(2n+1)πT** です。裸のグリーン関数は G₀(k, iωₙ) = 1/(iωₙ − εₖ + μ) で、すべての内線の運動量・周波数和はブリルアンゾーンと離散松原周波数で実行されます。
 
-フェルミオンの松原周波数は離散的であり:
+### PP 感受率と梯子型再総和
 
-```
-iωₙ = i(2n+1)π/β   (n = 0, ±1, ±2, ...)
-```
+粒子-粒子バブル（裸の感受率）は
 
-裸のGreen関数は:
+**χ₀(q, iνₘ) = −(1/Nβ) Σₖ Σₙ G₀(k, iωₙ) G₀(q−k, iνₘ−iωₙ)**
 
-```
-G₀(k, iωₙ) = 1 / (iωₙ - εₖ + μ)
-```
+で定義されます。物理的には、2 本の伝播線でつながった粒子-粒子の「泡」で、Cooper 対の揺らぎの裸の応答です。梯子型再総和は、粒子-粒子散乱の繰り返しを T 行列 T(q, iνₘ) = U / (1 − U χ₀(q, iνₘ)) によりすべての次数で足し上げます。これは粒子-粒子チャネルでの Bethe-Salpeter 方程式を解くことに相当します。
 
-ここで μ は化学ポテンシャルである。全ての内部運動量和はブリルアンゾーン上で、周波数和は離散松原周波数の集合上で実行される。
+### Thouless 判定条件
 
-### PP感受率（粒子-粒子バブル）
-
-粒子-粒子感受率（裸の感受率、PPバブル）は以下で定義される:
-
-```
-χ₀(q, iνₘ) = -1/(Nβ) Σₖ Σₙ G₀(k, iωₙ) G₀(q-k, iνₘ - iωₙ)
-```
-
-ここで N は格子点数、iνₘ はボソン型松原周波数である。この量は、運動量 q、周波数 iνₘ を持つCooper対が形成される確率振幅に対応する。
-
-### 梯子型再総和とT行列
-
-PPチャンネルにおける繰り返し散乱を全次数にわたって足し上げると、T行列が得られる:
-
-```
-T(q, iνₘ) = U / (1 - U × χ₀(q, iνₘ))
-```
-
-これは粒子-粒子チャンネルにおけるBethe-Salpeter方程式の解に等しい。
-
-### Thouless判定条件
-
-超伝導不安定性は、T行列が発散する条件:
-
-```
-1 - U × χ₀(q=0, iν₀=0) = 0
-```
-
-によって決定される。これがThouless判定条件である。
-
-引力Hubbard模型（U < 0）では χ₀ < 0 であるため:
-
-```
-U × χ₀ = |U| × |χ₀| > 0
-```
-
-となり、温度を下げて |χ₀| が増大し |U| × |χ₀| = 1 に達すると T行列が発散する。この発散はCooper不安定性を示し、対凝縮（超伝導秩序）の発現に対応する。
-
-転移温度 Tc は、1 - U*χ₀(T) = 0 を温度 T について二分法で解くことにより数値的に決定される。
+超伝導不安定性は T 行列が発散するとき、すなわち **1 − U χ₀(q=0, iν₀=0) = 0** のときに起こります。これが Thouless 判定条件です。臨界温度 Tc は、この条件が満たされるまで温度を走査する二分法で求めます。引力 Hubbard（U < 0）では χ₀ < 0 なので Uχ₀ > 0 となり、1 − |U||χ₀| = 0 で発散し、Cooper 不安定性と対凝縮の onset を表します。
 
 ## モジュール解説
 
-### algebra
-
-Wick定理に基づく代数的操作を実装する。
-
-- **`FermionOperator`**: フェルミオンの生成・消滅演算子を表す構造体。サイトインデックス、スピン、生成/消滅の種別を保持する。
-- **`Spin`**: スピンの上（Up）・下（Down）を表す列挙型。
-- **`Contraction`**: 2つのフェルミオン演算子間の縮約（伝播関数に対応）を表す。
-- **`WickTerm`**: 縮約の集合とフェルミオン符号（+1 または -1）の組。Wick定理の各項に対応する。
-- **`wick_theorem()`**: フェルミオン演算子の列に対してWick定理を適用し、全ての可能な縮約パターンを生成する。スピン保存則により、同じスピンの演算子同士のみが縮約される。フェルミオン符号は置換の反転数から計算される。
-
-### models
-
-物理模型のパラメータを定義する。
-
-- **`SquareLattice`**: 2D正方格子。k点グリッドと分散関係 ε(k) = -2t(cos kx + cos ky) を提供する。
-- **`HubbardModel`**: Hubbard模型のパラメータ（ホッピング t、相互作用 U）と格子を保持する。
-- **`ThermalParams`**: 有限温度計算のパラメータ。逆温度 β、化学ポテンシャル μ、松原周波数の打ち切り数 n_matsubara を指定する。
-
-### diagrams
-
-Feynmanダイアグラムの生成・分類・Feynman rules適用を行う。
-
-- **`FeynmanDiagram`**: 頂点（`Vertex`）と伝播関数（`Propagator`）からなるグラフ構造でダイアグラムを表現する。
-- **`generate_diagrams()`**: `Observable` 列挙型（`Vacuum` または `SelfEnergy`）に応じて、指定次数のFeynmanダイアグラムを生成する。
-- **`classify_diagrams()`**: 頂点記述子の正規化された署名を用いて、トポロジーが等価なダイアグラムをグループ化し、各トポロジーの重みを計算する。
-- **`apply_feynman_rules()`**: ダイアグラムにFeynman rulesを適用し、`FeynmanExpression`（記号式ツリーと前因子）を生成する。
-
-### symbolic
-
-記号式を表現するための式木。
-
-- **`Expr`**: 記号式を表す列挙型。以下のバリアントを持つ:
-  - `G0` -- 裸のGreen関数
-  - `U` -- 相互作用頂点
-  - `Sum` -- 運動量・周波数に関する和
-  - `Mul` -- 積
-  - `Add` -- 和
-  - `Inv` -- 逆数
-  - `Scalar` -- スカラー定数
-  - `Neg` -- 符号反転
-
-  `Display` トレイトの実装により、人間が読みやすい数式形式で出力される。
-
-### resummation
-
-梯子型再総和を実装する。
-
-- **`PPLadder`**: 粒子-粒子梯子型チャンネルを表す。
-- **`solve_tmatrix()`**: T行列 T = U/(1 - U*chi_0) を計算する。
-- **`find_tc()`**: Thouless判定条件 1 - U*chi_0(T) = 0 を二分法で解き、転移温度 Tc を返す。温度範囲と松原周波数の打ち切り数、収束判定の閾値を引数に取る。
-
-### numerical
-
-数値計算の基本関数を提供する。
-
-- **`evaluate_g0()`**: 裸のGreen関数 G₀(k, iωₙ) = 1/(iωₙ - εₖ + μ) を評価する。
-- **`compute_pp_susceptibility()`**: PP感受率 χ₀(q, iνₘ) = -1/(Nβ) Σₖ Σₙ G₀(k, iωₙ) G₀(q-k, iνₘ-iωₙ) を計算する。ボソン松原周波数 iνₘ に対するフェルミオン周波数のインデックス変換 m-1-n を内部で処理する。
-
-### visualization
-
-ダイアグラムの可視化機能を提供する。
-
-- **`to_dot()`**: 単一のFeynmanダイアグラムをGraphviz DOT形式の文字列に変換する。
-- **`to_dot_all()`**: 分類済みの全ダイアグラムをまとめてDOT形式に出力する。スピン上の伝播関数は青、スピン下は赤で色分けされ、外部脚は破線で表示される。
+- **algebra**: `FermionOperator`, `Spin`, `Contraction`, `WickTerm`, `wick_theorem()`。スピン保存でマッチングを制限（↑同士・↓同士のみ）。フェルミオン符号は反転数で計算。
+- **models**: `SquareLattice`（k グリッド、分散 ε(k)=-2t(cos kx+cos ky)）、`HubbardModel`（t, U）、`ThermalParams`（β, μ, n_matsubara）。
+- **diagrams**: 頂点・伝播線からなる `FeynmanDiagram` グラフ。`generate_diagrams()` は `Observable`（Vacuum, SelfEnergy）を引数に取る。`classify_diagrams()` は頂点記述子のソートされた署名でトポロジーを判定。`apply_feynman_rules()` で記号 `Expr` ツリーの `FeynmanExpression` を生成。
+- **symbolic**: `Expr` 列挙型（G0, U, Sum, Mul, Add, Inv, Scalar, Neg）と数式表示用 `Display`。
+- **resummation**: PP 梯子チャネル `PPLadder`。`solve_tmatrix()` で T = U/(1−Uχ₀) を計算。`find_tc()` で Thouless 条件 1−Uχ₀(T)=0 を二分法で解く。
+- **numerical**: `evaluate_g0()` で G₀(k,iωₙ)=1/(iωₙ−εₖ+μ)。`compute_pp_susceptibility()` で k と松原周波数の和。ボゾン周波数 iνₘ−iωₙ のインデックスはフェルミオン側で m−1−n に対応。
+- **visualization**: `to_dot()` / `to_dot_all()` で Graphviz DOT を出力。スピン↑=青、スピン↓=赤、外線=破線。
