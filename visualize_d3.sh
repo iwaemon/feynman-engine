@@ -61,6 +61,15 @@ if [ -n "$CHROME" ]; then
     --screenshot="diagram_wavy.png" --window-size=760,4200 \
     "$ABS_WAVY" 2>/dev/null || true
 
+  # Trim whitespace if ImageMagick is available
+  if command -v magick &>/dev/null; then
+    magick diagram_dot_vertex.png -trim +repage diagram_dot_vertex.png 2>/dev/null || true
+    magick diagram_wavy.png -trim +repage diagram_wavy.png 2>/dev/null || true
+  elif command -v convert &>/dev/null; then
+    convert diagram_dot_vertex.png -trim +repage diagram_dot_vertex.png 2>/dev/null || true
+    convert diagram_wavy.png -trim +repage diagram_wavy.png 2>/dev/null || true
+  fi
+
   if [ -f diagram_dot_vertex.png ] && [ -f diagram_wavy.png ]; then
     echo "  diagram_dot_vertex.png"
     echo "  diagram_wavy.png"
