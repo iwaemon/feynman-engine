@@ -1,0 +1,12 @@
+[package]
+name = "feynman-engine"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+num-complex = "0.4"
+rayon = "1.10"
+itertools = "0.13"
+
+[dev-dependencies]
+approx = "0.5"
