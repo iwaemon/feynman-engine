@@ -1,5 +1,7 @@
 # feynman-engine
 
+[日本語ガイド](docs/usage-ja.md)
+
 A perturbation theory engine for the Hubbard model in Rust.
 
 ## Overview

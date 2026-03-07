@@ -1,5 +1,7 @@
 # feynman-engine 使い方ガイド
 
+[English README](../README.md)
+
 ## 概要
 
 `feynman-engine` は有限温度における引力 Hubbard 模型の摂動展開を自動化する Rust ライブラリです。フェルミオン演算子から出発し、Wick の定理を適用してフェルミオン符号とスピン保存を満たすすべての縮約を生成し、Feynman 図を構成してトポロジーで分類し、Feynman 規則により記号的な式へ変換します。数値計算側では、松原形式で粒子-粒子感受率を評価し、梯子型再総和（Bethe-Salpeter 方程式）により Thouless 判定条件を通じて超伝導臨界温度 Tc を求めます。
