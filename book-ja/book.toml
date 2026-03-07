@@ -1,0 +1,10 @@
+[book]
+title = "Feynman - 摂動論エンジン"
+authors = ["shumpei"]
+language = "ja"
+
+[build]
+build-dir = "../target/book-ja"
+
+[output.html]
+mathjax-support = true
