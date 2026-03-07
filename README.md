@@ -140,8 +140,4 @@ The particle-particle bubble (bare susceptibility) is chi_0(q, i_nu_m) = -(1/N*b
 
 ### Thouless criterion
 
-The superconducting instability occurs when the T-matrix diverges, i.e., when 1 - U * chi_0(q=0, i_nu_0=0) = 0. This is the Thouless criterion. The critical temperature Tc is found by bisection: scanning temperature until the criterion is satisfied. For the attractive Hubbard model (U < 0), chi_0 is negative and -U*chi_0 is also negative, so 1 - U*chi_0 = 1 + |U|*|chi_0| would need |U|*|chi_0| to reach 1. The divergence signals the Cooper instability and onset of pair condensation.
-
-## License
-
-See [Cargo.toml](Cargo.toml) for package metadata.
+The superconducting instability occurs when the T-matrix diverges, i.e., when 1 - U * chi_0(q=0, i_nu_0=0) = 0. This is the Thouless criterion. The critical temperature Tc is found by bisection: scanning temperature until the criterion is satisfied. For the attractive Hubbard model (U < 0), chi_0 is negative, so U*chi_0 = |U|*|chi_0| > 0 and the criterion becomes 1 - |U|*|chi_0| = 0. The divergence signals the Cooper instability and onset of pair condensation.
