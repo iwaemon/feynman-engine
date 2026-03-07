@@ -1,0 +1,468 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Feynman Diagrams - Dot-Vertex Visualization</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    font-family: "Helvetica Neue", Arial, sans-serif;
+    background: #f5f5f0;
+    color: #333;
+    padding: 20px;
+  }
+  h1 {
+    text-align: center;
+    margin-bottom: 24px;
+    font-size: 1.6em;
+    color: #222;
+  }
+  .card {
+    background: #fff;
+    border: 1px solid #ddd;
+    border-radius: 8px;
+    margin: 0 auto 24px auto;
+    max-width: 720px;
+    box-shadow: 0 2px 6px rgba(0,0,0,0.08);
+    overflow: hidden;
+  }
+  .card-title {
+    background: #f0f0ea;
+    padding: 10px 16px;
+    font-size: 1.05em;
+    font-weight: 600;
+    border-bottom: 1px solid #ddd;
+  }
+  .card-body {
+    padding: 12px;
+    display: flex;
+    justify-content: center;
+  }
+  svg text {
+    font-family: "Helvetica Neue", Arial, sans-serif;
+  }
+</style>
+</head>
+<body>
+<h1>Feynman Diagrams (Dot-Vertex)</h1>
+<div id="container"></div>
+
+<script type="module">
+import * as d3 from "https://cdn.jsdelivr.net/npm/d3@7/+esm";
+
+const data = __DIAGRAM_JSON__;
+
+const SPIN_UP_COLOR = "#2266cc";
+const SPIN_DOWN_COLOR = "#cc2222";
+const VERTEX_RADIUS = 5;
+const DIAGRAM_W = 660;
+const DIAGRAM_H = 200;
+const MARGIN = { left: 60, right: 60, top: 50, bottom: 50 };
+
+function spinColor(spin) {
+  return spin === "Up" ? SPIN_UP_COLOR : SPIN_DOWN_COLOR;
+}
+function spinArrow(spin) {
+  return spin === "Up" ? "\u2191" : "\u2193";
+}
+
+function buildLayout(diag) {
+  const vertices = diag.vertices;
+  const props = diag.propagators;
+  const vIds = vertices.map(v => v.id).sort((a, b) => a - b);
+  const maxVId = Math.max(...vIds);
+  const extInId = 0;
+  const extOutId = maxVId + 1;
+
+  // Positions
+  const positions = {};
+  const usableW = DIAGRAM_W - MARGIN.left - MARGIN.right;
+  const cy = DIAGRAM_H / 2;
+
+  positions[extInId] = { x: MARGIN.left - 30, y: cy };
+  positions[extOutId] = { x: DIAGRAM_W - MARGIN.right + 30, y: cy };
+
+  if (vIds.length === 1) {
+    positions[vIds[0]] = { x: DIAGRAM_W / 2, y: cy };
+  } else {
+    vIds.forEach((id, i) => {
+      const x = MARGIN.left + (usableW * (i + 1)) / (vIds.length + 1);
+      positions[id] = { x, y: cy };
+    });
+  }
+
+  return { positions, vIds, extInId, extOutId, props, vertices };
+}
+
+function classifyProps(props, extInId, extOutId, vIds) {
+  const selfLoops = [];       // from === to (same vertex)
+  const extLines = [];        // external propagators connecting to vertices
+  const internalEdges = [];   // between two different vertices, not external
+  const disconnectedExt = []; // external line not touching any real vertex
+
+  const vIdSet = new Set(vIds);
+
+  props.forEach((p, i) => {
+    const f = p.from, t = p.to;
+    if (f === t && vIdSet.has(f)) {
+      selfLoops.push({ ...p, idx: i });
+    } else if (p.external) {
+      // Check if it touches a real vertex
+      const touchesVertex = vIdSet.has(f) || vIdSet.has(t);
+      if (touchesVertex) {
+        extLines.push({ ...p, idx: i });
+      } else {
+        disconnectedExt.push({ ...p, idx: i });
+      }
+    } else {
+      internalEdges.push({ ...p, idx: i });
+    }
+  });
+
+  return { selfLoops, extLines, internalEdges, disconnectedExt };
+}
+
+function renderDiagram(svg, diag, topoId, weight) {
+  const { positions, vIds, extInId, extOutId, props, vertices } = buildLayout(diag);
+  const { selfLoops, extLines, internalEdges, disconnectedExt } = classifyProps(props, extInId, extOutId, vIds);
+
+  const defs = svg.append("defs");
+
+  // Arrow markers for each spin color
+  ["Up", "Down"].forEach(spin => {
+    const color = spinColor(spin);
+    const markerId = `arrow-${spin}-${topoId}`;
+    defs.append("marker")
+      .attr("id", markerId)
+      .attr("viewBox", "0 0 10 10")
+      .attr("refX", 5)
+      .attr("refY", 5)
+      .attr("markerWidth", 8)
+      .attr("markerHeight", 8)
+      .attr("orient", "auto")
+      .append("path")
+      .attr("d", "M 0 1 L 10 5 L 0 9 Z")
+      .attr("fill", color);
+  });
+
+  // Dashed arrow marker for external legs
+  ["Up", "Down"].forEach(spin => {
+    const color = spinColor(spin);
+    const markerId = `arrow-ext-${spin}-${topoId}`;
+    defs.append("marker")
+      .attr("id", markerId)
+      .attr("viewBox", "0 0 10 10")
+      .attr("refX", 5)
+      .attr("refY", 5)
+      .attr("markerWidth", 8)
+      .attr("markerHeight", 8)
+      .attr("orient", "auto")
+      .append("path")
+      .attr("d", "M 0 1 L 10 5 L 0 9 Z")
+      .attr("fill", color);
+  });
+
+  // Grey arrow for disconnected external
+  const discMarkerId = `arrow-disc-${topoId}`;
+  defs.append("marker")
+    .attr("id", discMarkerId)
+    .attr("viewBox", "0 0 10 10")
+    .attr("refX", 5)
+    .attr("refY", 5)
+    .attr("markerWidth", 8)
+    .attr("markerHeight", 8)
+    .attr("orient", "auto")
+    .append("path")
+    .attr("d", "M 0 1 L 10 5 L 0 9 Z")
+    .attr("fill", "#888");
+
+  const g = svg.append("g");
+  let labelIdx = 0;
+
+  // --- Disconnected external lines ---
+  disconnectedExt.forEach(p => {
+    const y = DIAGRAM_H - MARGIN.bottom + 15;
+    const x0 = positions[extInId].x;
+    const x1 = positions[extOutId].x;
+    g.append("line")
+      .attr("x1", x0).attr("y1", y)
+      .attr("x2", x1).attr("y2", y)
+      .attr("stroke", "#888")
+      .attr("stroke-width", 1.5)
+      .attr("stroke-dasharray", "6,4")
+      .attr("marker-mid", `url(#${discMarkerId})`);
+    // Add midpoint arrow manually
+    const mx = (x0 + x1) / 2;
+    g.append("path")
+      .attr("d", `M ${mx - 5} ${y - 4} L ${mx + 5} ${y} L ${mx - 5} ${y + 4} Z`)
+      .attr("fill", "#888");
+    g.append("text")
+      .attr("x", x0 - 8).attr("y", y + 4)
+      .attr("text-anchor", "end")
+      .attr("font-size", "11px")
+      .attr("fill", "#888")
+      .text("in");
+    g.append("text")
+      .attr("x", x1 + 8).attr("y", y + 4)
+      .attr("text-anchor", "start")
+      .attr("font-size", "11px")
+      .attr("fill", "#888")
+      .text("out");
+    const lx = (x0 + x1) / 2;
+    g.append("text")
+      .attr("x", lx).attr("y", y - 8)
+      .attr("text-anchor", "middle")
+      .attr("font-size", "10px")
+      .attr("fill", spinColor(p.spin))
+      .text(`k${labelIdx}, i\u03C9${labelIdx} ${spinArrow(p.spin)}`);
+    labelIdx++;
+  });
+
+  // --- External legs (connected to vertices) ---
+  extLines.forEach(p => {
+    const vIdSet = new Set(vIds);
+    let startPos, endPos;
+    if (p.from === extInId) {
+      startPos = positions[extInId];
+      endPos = vIdSet.has(p.to) ? positions[p.to] : positions[extOutId];
+    } else if (p.to === extOutId) {
+      startPos = vIdSet.has(p.from) ? positions[p.from] : positions[extInId];
+      endPos = positions[extOutId];
+    } else {
+      startPos = positions[p.from] || positions[extInId];
+      endPos = positions[p.to] || positions[extOutId];
+    }
+
+    const color = spinColor(p.spin);
+    const mx = (startPos.x + endPos.x) / 2;
+    const my = (startPos.y + endPos.y) / 2;
+
+    g.append("line")
+      .attr("x1", startPos.x).attr("y1", startPos.y)
+      .attr("x2", endPos.x).attr("y2", endPos.y)
+      .attr("stroke", color)
+      .attr("stroke-width", 1.8)
+      .attr("stroke-dasharray", "6,4");
+
+    // Midpoint arrow
+    const angle = Math.atan2(endPos.y - startPos.y, endPos.x - startPos.x);
+    const aSize = 5;
+    g.append("path")
+      .attr("d", `M ${mx + aSize * Math.cos(angle)} ${my + aSize * Math.sin(angle)} ` +
+                  `L ${mx - aSize * Math.cos(angle) + aSize * Math.sin(angle)} ${my - aSize * Math.sin(angle) - aSize * Math.cos(angle)} ` +
+                  `L ${mx - aSize * Math.cos(angle) - aSize * Math.sin(angle)} ${my - aSize * Math.sin(angle) + aSize * Math.cos(angle)} Z`)
+      .attr("fill", color);
+
+    // "in" / "out" labels
+    if (p.from === extInId) {
+      g.append("text")
+        .attr("x", startPos.x - 8).attr("y", startPos.y + 4)
+        .attr("text-anchor", "end")
+        .attr("font-size", "11px")
+        .attr("fill", color)
+        .text("in");
+    }
+    if (p.to === extOutId) {
+      g.append("text")
+        .attr("x", endPos.x + 8).attr("y", endPos.y + 4)
+        .attr("text-anchor", "start")
+        .attr("font-size", "11px")
+        .attr("fill", color)
+        .text("out");
+    }
+
+    // Momentum label
+    const labelOffsetY = -10;
+    g.append("text")
+      .attr("x", mx).attr("y", my + labelOffsetY)
+      .attr("text-anchor", "middle")
+      .attr("font-size", "10px")
+      .attr("fill", color)
+      .text(`k${labelIdx}, i\u03C9${labelIdx} ${spinArrow(p.spin)}`);
+    labelIdx++;
+  });
+
+  // --- Self-loops (tadpoles) ---
+  // Group by vertex to offset multiple loops
+  const loopsByVertex = {};
+  selfLoops.forEach(p => {
+    if (!loopsByVertex[p.from]) loopsByVertex[p.from] = [];
+    loopsByVertex[p.from].push(p);
+  });
+
+  Object.entries(loopsByVertex).forEach(([vId, loops]) => {
+    loops.forEach((p, li) => {
+      const pos = positions[vId];
+      const color = spinColor(p.spin);
+      // Offset: first loop above, second below; if more, alternate
+      const direction = (li % 2 === 0) ? -1 : 1; // -1 = above, 1 = below
+      const loopH = 32 + (Math.floor(li / 2)) * 12;
+      const loopW = 18;
+
+      const cx = pos.x;
+      const cy = pos.y;
+      const tipY = cy + direction * loopH;
+
+      // Teardrop path: start at vertex, curve out and back
+      const path = d3.path();
+      path.moveTo(cx, cy);
+      path.bezierCurveTo(
+        cx - loopW, cy + direction * loopH * 0.4,
+        cx - loopW * 0.6, tipY,
+        cx, tipY
+      );
+      path.bezierCurveTo(
+        cx + loopW * 0.6, tipY,
+        cx + loopW, cy + direction * loopH * 0.4,
+        cx, cy
+      );
+
+      g.append("path")
+        .attr("d", path.toString())
+        .attr("fill", "none")
+        .attr("stroke", color)
+        .attr("stroke-width", 1.8);
+
+      // Arrow at the tip of the loop
+      const arrowY = tipY;
+      const arrowDir = 1; // pointing right at tip
+      g.append("path")
+        .attr("d", `M ${cx - 4} ${arrowY - direction * 3} L ${cx + 1} ${arrowY} L ${cx - 4} ${arrowY + direction * 3} Z`)
+        .attr("fill", color);
+
+      // Label
+      g.append("text")
+        .attr("x", cx + loopW + 4)
+        .attr("y", tipY + direction * 2)
+        .attr("text-anchor", "start")
+        .attr("font-size", "10px")
+        .attr("fill", color)
+        .text(`k${labelIdx}, i\u03C9${labelIdx} ${spinArrow(p.spin)}`);
+      labelIdx++;
+    });
+  });
+
+  // --- Internal edges (between different vertices) ---
+  // Group parallel edges between same vertex pair to offset them
+  const edgeGroups = {};
+  internalEdges.forEach(p => {
+    const key = [Math.min(p.from, p.to), Math.max(p.from, p.to)].join("-");
+    if (!edgeGroups[key]) edgeGroups[key] = [];
+    edgeGroups[key].push(p);
+  });
+
+  Object.values(edgeGroups).forEach(group => {
+    group.forEach((p, gi) => {
+      const fromPos = positions[p.from];
+      const toPos = positions[p.to];
+      if (!fromPos || !toPos) return;
+
+      const color = spinColor(p.spin);
+      const n = group.length;
+      // Vertical offset for parallel edges
+      const offsetBase = 35;
+      let offset;
+      if (n === 1) {
+        offset = 0;
+      } else {
+        offset = (gi - (n - 1) / 2) * offsetBase;
+      }
+
+      const mx = (fromPos.x + toPos.x) / 2;
+      const my = (fromPos.y + toPos.y) / 2 - offset;
+
+      // Quadratic Bezier
+      const path = d3.path();
+      path.moveTo(fromPos.x, fromPos.y);
+      path.quadraticCurveTo(mx, my, toPos.x, toPos.y);
+
+      g.append("path")
+        .attr("d", path.toString())
+        .attr("fill", "none")
+        .attr("stroke", color)
+        .attr("stroke-width", 1.8);
+
+      // Mid-line arrow
+      // Evaluate quadratic Bezier at t=0.5
+      const at = 0.5;
+      const bx = (1 - at) * (1 - at) * fromPos.x + 2 * (1 - at) * at * mx + at * at * toPos.x;
+      const by = (1 - at) * (1 - at) * fromPos.y + 2 * (1 - at) * at * my + at * at * toPos.y;
+      // Tangent at t=0.5
+      const tx = 2 * (1 - at) * (mx - fromPos.x) + 2 * at * (toPos.x - mx);
+      const ty = 2 * (1 - at) * (my - fromPos.y) + 2 * at * (toPos.y - my);
+      const angle = Math.atan2(ty, tx);
+      const aSize = 5;
+      g.append("path")
+        .attr("d", `M ${bx + aSize * Math.cos(angle)} ${by + aSize * Math.sin(angle)} ` +
+                    `L ${bx - aSize * Math.cos(angle) + aSize * Math.sin(angle)} ${by - aSize * Math.sin(angle) - aSize * Math.cos(angle)} ` +
+                    `L ${bx - aSize * Math.cos(angle) - aSize * Math.sin(angle)} ${by - aSize * Math.sin(angle) + aSize * Math.cos(angle)} Z`)
+        .attr("fill", color);
+
+      // Label
+      const labelY = my - 8 * Math.sign(offset || -1);
+      g.append("text")
+        .attr("x", mx).attr("y", labelY)
+        .attr("text-anchor", "middle")
+        .attr("font-size", "10px")
+        .attr("fill", color)
+        .text(`k${labelIdx}, i\u03C9${labelIdx} ${spinArrow(p.spin)}`);
+      labelIdx++;
+    });
+  });
+
+  // --- Vertices (drawn last so they appear on top) ---
+  vIds.forEach(id => {
+    const pos = positions[id];
+    g.append("circle")
+      .attr("cx", pos.x)
+      .attr("cy", pos.y)
+      .attr("r", VERTEX_RADIUS)
+      .attr("fill", "#000")
+      .attr("stroke", "#000");
+
+    // Vertex label below
+    g.append("text")
+      .attr("x", pos.x)
+      .attr("y", pos.y + VERTEX_RADIUS + 14)
+      .attr("text-anchor", "middle")
+      .attr("font-size", "11px")
+      .attr("font-weight", "600")
+      .attr("fill", "#333")
+      .text(`v${id}`);
+  });
+}
+
+// --- Build cards ---
+const container = d3.select("#container");
+
+data.diagrams.forEach(entry => {
+  const card = container.append("div").attr("class", "card");
+  card.append("div")
+    .attr("class", "card-title")
+    .text(`Topology ${entry.topology_id} (weight = ${entry.weight})`);
+
+  const body = card.append("div").attr("class", "card-body");
+
+  // Adjust height for disconnected external lines
+  const diag = entry.diagram;
+  const vIds = diag.vertices.map(v => v.id).sort((a, b) => a - b);
+  const maxVId = Math.max(...vIds);
+  const extOutId = maxVId + 1;
+  const vIdSet = new Set(vIds);
+  const hasDisconnected = diag.propagators.some(p =>
+    p.external && !vIdSet.has(p.from) && !vIdSet.has(p.to)
+  );
+  const h = hasDisconnected ? DIAGRAM_H + 30 : DIAGRAM_H;
+
+  const svg = body.append("svg")
+    .attr("width", DIAGRAM_W)
+    .attr("height", h)
+    .attr("viewBox", `0 0 ${DIAGRAM_W} ${h}`);
+
+  renderDiagram(svg, diag, entry.topology_id, entry.weight);
+});
+
+</script>
+</body>
+</html>
