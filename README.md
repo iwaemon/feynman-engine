@@ -24,8 +24,6 @@ cargo build
 cargo test
 ```
 
-Requires Rust 2021 edition. Dependencies: `num-complex`, `rayon`, `itertools`.
-
 ## Quick Start
 
 ### Ladder resummation
