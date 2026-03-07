@@ -31,11 +31,65 @@
   }
   .card-body { padding: 12px; display: flex; justify-content: center; }
   svg text { font-family: "Helvetica Neue", Arial, sans-serif; }
+  .export-bar { text-align: center; margin-bottom: 16px; }
+  .export-bar button {
+    padding: 8px 20px; font-size: 14px; border: 1px solid #999;
+    border-radius: 4px; background: #fff; cursor: pointer; margin: 0 4px;
+  }
+  .export-bar button:hover { background: #eee; }
 </style>
 </head>
 <body>
 <h1>Feynman Diagrams (k-space, Textbook Style)</h1>
+<div class="export-bar">
+  <button onclick="exportAllSVG()">Export All SVG</button>
+  <button onclick="exportCombinedSVG()">Export Combined SVG</button>
+</div>
 <div id="container"></div>
+<script>
+function exportAllSVG() {
+  document.querySelectorAll('.card').forEach((card, i) => {
+    const svg = card.querySelector('svg');
+    const clone = svg.cloneNode(true);
+    clone.setAttribute('xmlns', 'http://www.w3.org/2000/svg');
+    clone.style.fontFamily = '"Helvetica Neue", Arial, sans-serif';
+    const blob = new Blob(['<?xml version="1.0" encoding="UTF-8"?>\n' + clone.outerHTML], {type: 'image/svg+xml'});
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = `diagram_wavy_topo${i+1}.svg`;
+    a.click();
+    URL.revokeObjectURL(a.href);
+  });
+}
+function exportCombinedSVG() {
+  const svgs = document.querySelectorAll('.card svg');
+  let totalH = 0;
+  const gap = 30;
+  const items = [];
+  svgs.forEach(svg => {
+    const w = +svg.getAttribute('width');
+    const h = +svg.getAttribute('height');
+    items.push({svg, w, h, y: totalH});
+    totalH += h + gap;
+  });
+  const maxW = Math.max(...items.map(it => it.w));
+  let combined = `<?xml version="1.0" encoding="UTF-8"?>\n<svg xmlns="http://www.w3.org/2000/svg" width="${maxW}" height="${totalH}" style="font-family: Helvetica Neue, Arial, sans-serif; background: white;">`;
+  items.forEach((it, i) => {
+    const title = document.querySelectorAll('.card-title')[i].textContent.trim();
+    combined += `<g transform="translate(0,${it.y})">`;
+    combined += `<text x="10" y="16" font-size="13" font-weight="600" fill="#333">${title}</text>`;
+    combined += `<g transform="translate(0,20)">${it.svg.innerHTML}</g>`;
+    combined += `</g>`;
+  });
+  combined += '</svg>';
+  const blob = new Blob([combined], {type: 'image/svg+xml'});
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = 'diagram_wavy_all.svg';
+  a.click();
+  URL.revokeObjectURL(a.href);
+}
+</script>
 
 <script type="module">
 import * as d3 from "https://cdn.jsdelivr.net/npm/d3@7/+esm";
