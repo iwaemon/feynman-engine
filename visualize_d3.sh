@@ -55,10 +55,10 @@ if [ -n "$CHROME" ]; then
   ABS_WAVY="file://$(pwd)/diagram_wavy.html"
 
   "$CHROME" --headless --disable-gpu --no-sandbox \
-    --screenshot="diagram_dot_vertex.png" --window-size=760,2400 \
+    --screenshot="diagram_dot_vertex.png" --window-size=760,4200 \
     "$ABS_DOT" 2>/dev/null || true
   "$CHROME" --headless --disable-gpu --no-sandbox \
-    --screenshot="diagram_wavy.png" --window-size=760,2400 \
+    --screenshot="diagram_wavy.png" --window-size=760,4200 \
     "$ABS_WAVY" 2>/dev/null || true
 
   if [ -f diagram_dot_vertex.png ] && [ -f diagram_wavy.png ]; then
