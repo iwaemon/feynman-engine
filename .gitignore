@@ -1,2 +1,9 @@
 /target
 .worktrees
+
+# Generated diagram outputs
+/diagram*.dot
+/diagram*.png
+/diagram*.html
+/diagrams.dot
+/*.jpeg

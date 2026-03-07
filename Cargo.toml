@@ -2,6 +2,13 @@
 name = "feynman-engine"
 version = "0.1.0"
 edition = "2021"
+rust-version = "1.70"
+description = "A perturbation theory engine for the Hubbard model: Wick contractions, Feynman diagram generation, symbolic expressions, and ladder resummation for superconducting Tc"
+license = "MIT"
+repository = "https://github.com/shumpei/feynman-engine"
+authors = ["Shumpei"]
+keywords = ["physics", "hubbard-model", "feynman-diagrams", "perturbation-theory", "superconductivity"]
+categories = ["science", "mathematics"]
 
 [dependencies]
 num-complex = "0.4"

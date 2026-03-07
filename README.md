@@ -19,6 +19,13 @@ A perturbation theory engine for the Hubbard model in Rust.
 
 ## Installation
 
+### Prerequisites
+
+- [Rust](https://www.rust-lang.org/tools/install) toolchain (edition 2021, MSRV 1.70)
+- [Graphviz](https://graphviz.org/) (optional, for rendering DOT diagrams to PNG/SVG)
+  - macOS: `brew install graphviz`
+  - Ubuntu: `apt install graphviz`
+
 ```bash
 git clone <repo-url>
 cd feynman
@@ -90,6 +97,29 @@ Topology 2 (weight = -1):
 
 ... 7 more topologies for 2nd order
 ```
+
+#### Exporting diagrams
+
+Export Graphviz DOT and/or JSON (for D3.js visualization) to files:
+
+```bash
+# Export DOT and render to PNG
+cargo run --example second_order_self_energy -- --dot diagrams.dot
+dot -Tpng diagrams.dot -o diagrams.png
+
+# Export JSON for D3.js
+cargo run --example second_order_self_energy -- --json diagrams.json
+
+# Export both at once
+cargo run --example second_order_self_energy -- --dot diagrams.dot --json diagrams.json
+
+# Write DOT to stdout (suppresses text summary)
+cargo run --example second_order_self_energy -- --dot -
+```
+
+Spin-up propagators are blue, spin-down are red, and external legs are dashed in the DOT output.
+
+The JSON output contains an array of classified diagrams with `topology_id`, `weight`, `vertices`, `propagators` (with `from`, `to`, `spin`, `external`), `sign`, and `symmetry_factor` fields.
 
 ## Architecture
 

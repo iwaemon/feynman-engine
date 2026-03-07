@@ -17,6 +17,13 @@
 
 ## インストール
 
+### 前提条件
+
+- [Rust](https://www.rust-lang.org/tools/install) ツールチェイン（edition 2021、MSRV 1.70）
+- [Graphviz](https://graphviz.org/)（任意、DOT 図の PNG/SVG 描画に必要）
+  - macOS: `brew install graphviz`
+  - Ubuntu: `apt install graphviz`
+
 ```bash
 git clone <repo-url>
 cd feynman
@@ -106,15 +113,26 @@ Topology 2 (weight = -1):
 - **1 次 Topology 2（weight=-1）**: 1 本のループと 1 本の内線。Fock 型の寄与（交換で符号が反転）。
 - **2 次の寄与**: 4 頂点・複数ループのダイアグラム群。繰り込みや散乱の 2 次効果を表します。
 
-**DOT 出力の可視化:** 例は標準出力に Graphviz の DOT 形式で全トポロジーの図を出力します。可視化するには、出力をファイルにリダイレクトしてから `dot` で画像に変換してください。
+**図のエクスポート:** `--dot` と `--json` フラグでファイルに直接出力できます。
 
 ```bash
-cargo run --example second_order_self_energy > diagrams.dot 2>&1
-# 先頭の "digraph AllDiagrams {" から "}" までを diagrams.dot に残し、
+# DOT を出力して PNG に変換
+cargo run --example second_order_self_energy -- --dot diagrams.dot
 dot -Tpng diagrams.dot -o diagrams.png
+
+# D3.js 用 JSON を出力
+cargo run --example second_order_self_energy -- --json diagrams.json
+
+# 両方同時に出力
+cargo run --example second_order_self_energy -- --dot diagrams.dot --json diagrams.json
+
+# DOT を標準出力に書き出す（テキスト要約は抑制）
+cargo run --example second_order_self_energy -- --dot -
 ```
 
 スピン上向き伝播線は青、下向きは赤、外線は破線で描画されます。
+
+JSON 出力には `topology_id`、`weight`、`vertices`、`propagators`（`from`、`to`、`spin`、`external`）、`sign`、`symmetry_factor` フィールドが含まれます。
 
 ## アーキテクチャ
 
@@ -139,15 +157,17 @@ HubbardModel + ThermalParams → evaluate_g0(k, iωₙ)
 
 ### モジュール一覧
 
-| モジュール | 説明 |
-|---|---|
-| `algebra/` | フェルミオン演算子、スピン、縮約、Wick の定理 |
-| `models/` | 正方格子（k グリッド、分散）、Hubbard 模型パラメータ |
-| `diagrams/` | Feynman 図グラフ、生成、トポロジー分類、Feynman 規則 |
-| `symbolic/` | 式ツリー（`G0`, `U`, `Sum`, `Mul`, `Add`, ...）と `Display` |
-| `resummation/` | PP 梯子チャネル、T 行列、Thouless 判定 Tc 探索 |
-| `numerical/` | グリーン関数 G0(k, iωₙ)、松原和、PP 感受率 |
-| `visualization/` | Graphviz DOT 出力（スピン↑=青、スピン↓=赤） |
+
+| モジュール            | 説明                                                   |
+| ---------------- | ---------------------------------------------------- |
+| `algebra/`       | フェルミオン演算子、スピン、縮約、Wick の定理                            |
+| `models/`        | 正方格子（k グリッド、分散）、Hubbard 模型パラメータ                      |
+| `diagrams/`      | Feynman 図グラフ、生成、トポロジー分類、Feynman 規則                   |
+| `symbolic/`      | 式ツリー（`G0`, `U`, `Sum`, `Mul`, `Add`, ...）と `Display` |
+| `resummation/`   | PP 梯子チャネル、T 行列、Thouless 判定 Tc 探索                     |
+| `numerical/`     | グリーン関数 G0(k, iωₙ)、松原和、PP 感受率                         |
+| `visualization/` | Graphviz DOT 出力（スピン↑=青、スピン↓=赤）                       |
+
 
 ## 物理的背景
 
@@ -155,7 +175,7 @@ HubbardModel + ThermalParams → evaluate_g0(k, iωₙ)
 
 Hubbard 模型は格子上の電子のホッピングとオンサイト相互作用を記述します。ハミルトニアンは
 
-**H = −t Σ_{<ij>σ} c†_iσ c_jσ + U Σ_i n_{i↑} n_{i↓}**
+**H = −t Σ_{****σ} c†*iσ c_jσ + U Σ_i n*{i↑} n_{i↓}**
 
 で定義されます。2 次元正方格子では分散は ε(k) = −2t(cos kx + cos ky) です。相互作用頂点は同一サイトの 4 つのフェルミオン演算子 c†↑ c↑ c†↓ c↓ を結合し、結合定数が U です。U < 0（引力）のとき s 波超伝導が可能で、U > 0（斥力）のときは粒子-粒子チャネルは発散しません。
 
@@ -184,3 +204,4 @@ Hubbard 模型は格子上の電子のホッピングとオンサイト相互作
 - **resummation**: PP 梯子チャネル `PPLadder`。`solve_tmatrix()` で T = U/(1−Uχ₀) を計算。`find_tc()` で Thouless 条件 1−Uχ₀(T)=0 を二分法で解く。
 - **numerical**: `evaluate_g0()` で G₀(k,iωₙ)=1/(iωₙ−εₖ+μ)。`compute_pp_susceptibility()` で k と松原周波数の和。ボゾン周波数 iνₘ−iωₙ のインデックスはフェルミオン側で m−1−n に対応。
 - **visualization**: `to_dot()` / `to_dot_all()` で Graphviz DOT を出力。スピン↑=青、スピン↓=赤、外線=破線。
+
