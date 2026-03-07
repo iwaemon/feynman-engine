@@ -136,7 +136,7 @@ At finite temperature T = 1/beta, time-ordered perturbation theory is formulated
 
 ### Particle-particle susceptibility and ladder resummation
 
-The particle-particle bubble (bare susceptibility) is chi_0(q, i_nu_m) = -(1/N*beta) sum_k sum_n G0(k, iwn) G0(q-k, i_nu_m - iwn). Ladder resummation sums repeated particle-particle scattering to all orders via the T-matrix: T(q, i_nu_m) = U / (1 - U * chi_0(q, i_nu_m)). This is equivalent to solving the Bethe-Salpeter equation in the particle-particle channel.
+The particle-particle bubble (bare susceptibility) is chi_0(q, i_nu_m) = -1/(N*beta) sum_k sum_n G0(k, iwn) G0(q-k, i_nu_m - iwn). Ladder resummation sums repeated particle-particle scattering to all orders via the T-matrix: T(q, i_nu_m) = U / (1 - U * chi_0(q, i_nu_m)). This is equivalent to solving the Bethe-Salpeter equation in the particle-particle channel.
 
 ### Thouless criterion
 
