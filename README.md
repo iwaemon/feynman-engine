@@ -192,6 +192,13 @@ mdbook serve book/      # English: http://localhost:3000
 mdbook serve book-ja/   # Japanese: http://localhost:3000
 ```
 
+### Online documentation
+
+The documentation is published on GitHub Pages:
+
+- [English](https://iwaemon.github.io/feynman-engine/)
+- [日本語](https://iwaemon.github.io/feynman-engine/ja/)
+
 ### Documentation structure
 
 | Section | Content |
